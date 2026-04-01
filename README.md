@@ -1,284 +1,286 @@
-# tc — Terminal AI Coding Assistant with Kernel-Level Security
+# tc — Terminal AI Coding Assistant
 
-A terminal-native AI coding assistant built in Go that enforces security restrictions at the **kernel level** — not through application prompts, but through Linux security primitives that the process itself cannot override.
+An AI coding assistant that lives in your terminal. One command to install, zero config to start.
 
-## Why This Exists
-
-Current AI coding assistants (Claude Code, Aider, Cursor) enforce security through **application-level permission prompts** — the user clicks "Allow" and the tool does whatever it wants. If the application has a bug, or the LLM tricks it, those guardrails vanish.
-
-`tc` takes a fundamentally different approach: customer-defined restrictions are compiled into **kernel-level enforcement** using Linux security primitives (Landlock, seccomp, namespaces, cgroups). These are one-way ratchets — once applied at process startup, the process itself cannot weaken them, even with arbitrary code execution.
-
-### The Problem with Application-Level Security
-
-```
-Claude Code / Aider / Cursor:
-  LLM requests tool → App checks rule → Prompts user Y/N → Executes
-
-  If the app has a bug:    rules bypassed
-  If the binary is patched: rules gone
-  If the LLM is clever:    regex arms race
+```bash
+curl -fsSL https://raw.githubusercontent.com/Hitesh-K-Murali/terminal-code/main/install.sh | sh
 ```
 
-### How tc Solves It
+Then run `tc`. That's it.
 
-```
-tc:
-  LLM requests tool → App checks rule → Kernel enforces restriction → Executes
+---
 
-  If the app has a bug:    kernel still enforces
-  If the binary is patched: kernel still enforces
-  If the LLM is clever:    binary doesn't exist in subprocess
-```
+## Quick Start
 
-## Architecture
+### Install
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                         ORCHESTRATOR                              │
-│  (Main goroutine — owns terminal, coordinates, renders UI)        │
-│                                                                    │
-│  ┌──────────────────────────────────────────────────────────┐    │
-│  │                     AGENT POOL                            │    │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐               │    │
-│  │  │ Agent 0   │  │ Agent 1   │  │ Agent 2   │  (bounded)   │    │
-│  │  │ goroutine │  │ goroutine │  │ goroutine │              │    │
-│  │  │ + budget  │  │ + budget  │  │ + budget  │              │    │
-│  │  └─────┬─────┘  └─────┬─────┘  └─────┬─────┘              │    │
-│  │        │               │               │                    │    │
-│  │  ┌─────▼───────────────▼───────────────▼──────┐           │    │
-│  │  │         RESOURCE COORDINATOR                 │           │    │
-│  │  │  PathLocker  — per-file RWMutex              │           │    │
-│  │  │  GitMutex    — exclusive semaphore           │           │    │
-│  │  │  RateLimit   — per-provider token bucket     │           │    │
-│  │  │  IOQueue     — serialized terminal output    │           │    │
-│  │  │  BudgetMgr   — per-agent token/cost limits   │           │    │
-│  │  └──────────────────────────────────────────────┘           │    │
-│  └──────────────────────────────────────────────────────────┘    │
-│                                                                    │
-│  ┌──────────────────────────────────────────────────────────┐    │
-│  │              KERNEL SANDBOX LAYER                         │    │
-│  │  seccomp-bpf │ Landlock │ cgroups │ namespaces            │    │
-│  └──────────────────────────────────────────────────────────┘    │
-└──────────────────────────────────────────────────────────────────┘
+```bash
+# Option 1: One-line install (recommended)
+curl -fsSL https://raw.githubusercontent.com/Hitesh-K-Murali/terminal-code/main/install.sh | sh
+
+# Option 2: Go install
+go install github.com/Hitesh-K-Murali/terminal-code/cmd/tc@latest
+
+# Option 3: Build from source
+git clone https://github.com/Hitesh-K-Murali/terminal-code.git
+cd terminal-code
+make install
 ```
 
-## Security: Four Independent Layers
+### First Run
 
-Each layer is independent. Compromising one doesn't compromise the others.
+```bash
+tc
+```
 
-| Layer | Mechanism | What It Enforces | Can App Override? |
-|-------|-----------|-----------------|-------------------|
-| **1. Process Isolation** | PID/Mount/Net/User namespaces | Subprocess can't see host processes, only allowed binaries visible, no network | **No** |
-| **2. Syscall Filtering** | seccomp-bpf (TSYNC) | Blocks ptrace, process_vm_read/write, kexec across ALL goroutines | **No** |
-| **3. Filesystem Sandbox** | Landlock LSM | Kernel denies read/write/delete to restricted paths | **No** |
-| **4. Resource Limits** | cgroups v1/v2 | Memory cap, CPU throttle, PID limit per subprocess | **No** |
-| **5. Application Policy** | Config-driven rules | Command argument patterns, token budgets, cost limits | Defense-in-depth |
+On first run, a setup wizard guides you through:
+1. **Pick a provider** — Anthropic (Claude), OpenAI (GPT), or Ollama (local, free)
+2. **Enter your API key** — masked input, stored with 0600 permissions
+3. **Choose a model** — sensible defaults pre-selected
 
-## Customer-Configurable Restrictions
+No config files to edit. No environment variables to set. Just run `tc`.
 
-Customers define restrictions in `~/.tc/restrictions.toml`. At startup, these are **compiled into kernel enforcement**:
+### Already Have an API Key?
+
+If `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_AUTH_TOKEN` is in your environment, tc uses it automatically — no setup needed.
+
+```bash
+export ANTHROPIC_API_KEY=sk-ant-...
+tc
+```
+
+---
+
+## Commands
+
+| Command | What It Does |
+|---|---|
+| `tc` | Start the AI assistant (chat TUI) |
+| `tc setup` | Re-run the configuration wizard |
+| `tc config` | View current configuration |
+| `tc config set model gpt-4o` | Change a setting |
+| `tc init` | Initialize tc for the current project (restrictions, memory) |
+| `tc doctor` | Diagnose issues (config, API, kernel features) |
+| `tc upgrade` | Self-update to the latest release |
+| `tc version` | Print version |
+| `tc completion bash\|zsh\|fish` | Generate shell completions |
+
+### Inside the TUI
+
+| Command | What It Does |
+|---|---|
+| `/help` | Show available slash commands |
+| `/model [name]` | Show or switch the active model |
+| `/cost` | Show token usage and estimated cost |
+| `/tools` | List available tools |
+| `/clear` | Clear conversation history |
+| `/quit` | Exit |
+
+**Keyboard:** Enter = send, Ctrl+D = newline, Ctrl+C = quit.
+
+---
+
+## Providers
+
+tc works with any of these — switch anytime with `tc config set provider <name>`:
+
+| Provider | Models | Requires |
+|---|---|---|
+| **Anthropic** | claude-sonnet-4, claude-opus-4, claude-haiku-4 | API key |
+| **OpenAI** | gpt-4o, gpt-4o-mini, o1, o3-mini | API key |
+| **Ollama** | llama3.2, codellama, deepseek-coder, mistral, ... | Ollama running locally |
+
+Ollama needs no API key — runs entirely on your machine. Install Ollama, pull a model, run tc.
+
+### Custom API Endpoint
+
+For corporate proxies or self-hosted APIs:
+
+```bash
+tc config set base_url https://your-proxy.corp.com
+```
+
+Or via environment: `ANTHROPIC_BASE_URL=https://...`
+
+---
+
+## Tools
+
+The AI assistant has 7 built-in tools, each sandboxed:
+
+| Tool | Permission | What It Does |
+|---|---|---|
+| `read_file` | Read | Read files with line numbers |
+| `write_file` | Write | Write/create files (size-limited) |
+| `glob` | Read | Find files by pattern (`**/*.go`) |
+| `grep` | Read | Search file contents by regex |
+| `bash` | Execute | Run shell commands (sandboxed subprocess) |
+| `git` | Execute | Git operations (push/rebase/reset blocked) |
+| `dir_context` | Read | Get a directory summary (cached) |
+
+Every tool call goes through two layers of enforcement:
+1. **Application policy** — configurable allow/deny rules
+2. **Kernel enforcement** — Landlock, namespaces, cgroups (cannot be bypassed)
+
+---
+
+## Security
+
+### What Makes tc Different
+
+Other AI coding tools enforce security by asking "Allow? Y/N." If the app has a bug, those rules vanish.
+
+tc compiles your restrictions into **kernel-level enforcement** — Linux security primitives the process itself cannot override, even with arbitrary code execution.
+
+| Layer | Mechanism | What It Enforces | Can App Bypass? |
+|---|---|---|---|
+| Subprocess isolation | PID/Mount/Net namespaces | Process can't see host, only allowed binaries visible | No |
+| Syscall filtering | seccomp-bpf (TSYNC) | Blocks ptrace, process_vm_read/write across all threads | No |
+| Filesystem sandbox | Landlock LSM | Kernel denies read/write to restricted paths | No |
+| Resource limits | cgroups v1/v2 | Memory cap, CPU throttle, PID limit per subprocess | No |
+| Application policy | Config-driven rules | Command patterns, token budgets, cost limits | Defense-in-depth |
+
+### Configuring Restrictions
+
+```bash
+tc init   # Creates .tc/restrictions.toml in your project
+```
+
+Then edit `.tc/restrictions.toml`:
 
 ```toml
 [filesystem]
-# Kernel-enforced via Landlock — these paths are PHYSICALLY unreadable
-deny_read = ["~/.ssh/**", "~/.aws/**", "/etc/shadow", "**/*.key"]
-deny_write = ["/usr/**", "/bin/**", "~/.bashrc"]
-allow_delete = false  # Landlock removes unlink permission entirely
+# Kernel-enforced — these paths are physically unreadable by tc
+deny_read = ["~/.ssh/**", "~/.aws/**", "/etc/shadow"]
+allow_delete = false
 
 [commands]
-# Mount namespace — unlisted binaries don't exist in subprocess
+# Mount namespace — unlisted binaries don't exist in subprocesses
 allow = ["git", "go", "make", "grep", "cat", "ls"]
-# rm, wget, nc, nmap → "command not found" (binary invisible)
 
 [network]
-# Network namespace — subprocess has no network stack
+# Network namespace — subprocesses have no network stack
 subprocess_network = false
 
 [resources]
 # cgroups — kernel OOM-kills at limit
 max_memory_per_subprocess = "256MB"
-max_pids_per_subprocess = 64   # Prevents fork bombs
+max_pids_per_subprocess = 64
 ```
 
-### Guarantee Levels
+Run `tc doctor` to see what's enforced at kernel level vs application level on your system.
 
-| Restriction | Enforcement | Guarantee |
-|---|---|---|
-| File read/write/delete deny | Landlock (kernel) | **100%** — kernel denies the syscall |
-| Command restriction | Mount namespace (kernel) | **100%** — binary invisible to subprocess |
-| Network restriction | Network namespace (kernel) | **100%** — kernel drops packets |
-| Memory/CPU/PID limits | cgroups (kernel) | **100%** — kernel OOM-kills/throttles |
-| Command argument patterns | Application layer | ~95% — defense-in-depth |
-| Token/cost budgets | Application layer | ~95% — application-enforced |
+### Kernel Compatibility
 
-## Parallel Agent Execution
+| Kernel | Enforcement |
+|---|---|
+| 5.13+ | Full: Landlock + seccomp + namespaces + cgroups |
+| 4.18+ | Partial: seccomp + namespaces + cgroups (filesystem is app-level) |
 
-Multiple agents run concurrently with proper isolation:
+tc detects capabilities at startup and degrades gracefully with clear warnings.
 
-- **Bounded concurrency** — semaphore-limited agent pool prevents resource exhaustion
-- **Per-path file locking** — multiple agents can read the same file; only one can write
-- **Git mutex** — `.git/index.lock` is exclusive; agents queue for git operations
-- **Serialized output** — single IOQueue prevents terminal output interleaving
-- **Per-agent budgets** — each agent has token/cost limits; session budget aggregates
+---
 
-### CPU Model
+## Multi-Agent Execution
 
-The workload is **>95% IO-bound** (waiting on LLM API, filesystem, subprocesses). Actual CPU work is JSON marshaling (~microseconds) and terminal rendering (~milliseconds). This means `GOMAXPROCS=4` supports 20+ concurrent agents without CPU contention. The real bottlenecks are API rate limits and file system contention.
+Multiple agents run in parallel with shared resource coordination:
 
-## What Makes tc Different
+- **Bounded pool** — configurable max concurrent agents (default 3)
+- **File locking** — per-path RWMutex (concurrent reads, exclusive writes)
+- **Git mutex** — only one git operation at a time
+- **Budget limits** — per-agent token/cost caps
+- **Message bus** — agents share findings and delegate subtasks
+- **Autonomous delegation** — agents spawn sub-agents (sync or async)
 
-| | Claude Code | Aider | tc |
-|---|---|---|---|
-| **Language** | TypeScript (512K lines) | Python | Go (~3K lines) |
-| **Binary** | Requires Bun runtime | Requires Python | Single static binary |
-| **Startup** | ~500ms | ~300ms | ~10ms |
-| **Security** | Application-level Y/N prompts | None | Kernel-level enforcement |
-| **File restrictions** | App checks path | None | Landlock (kernel denies syscall) |
-| **Command restrictions** | Regex pattern matching | None | Mount namespace (binary invisible) |
-| **Network restrictions** | None | None | Network namespace (no stack) |
-| **Resource limits** | None | None | cgroups (kernel OOM-kill) |
-| **Multi-provider** | Anthropic-first | Multi | Multi from day one |
-| **Local models** | No | Yes | Yes (Ollama) |
-| **Parallel agents** | Sub-agents | No | Bounded pool with coordination |
-| **Source leak prevention** | Leaked via npm source maps | Open source | Native binary, garble obfuscation |
+---
 
-## Anti-Leak Architecture
+## Configuration Reference
 
-Claude Code's entire source was leaked via npm source maps (March 2026). `tc` eliminates this class:
+### Config File (`~/.tc/config.toml`)
 
-- **Go compiles to native machine code** — no source maps, no intermediate format
-- **garble** obfuscates symbol names and encrypts string constants
-- **No secrets in binary** — API keys acquired at runtime via OS keychain
-- **Binary integrity check** — self-hash verification at startup
-- **Anti-debug** — seccomp blocks ptrace; LD_PRELOAD detection
+```toml
+provider = "anthropic"          # anthropic, openai, ollama
+api_key = "sk-ant-..."          # API key (not needed for ollama)
+model = "claude-sonnet-4-20250514"  # Default model
+base_url = ""                   # Custom API endpoint (optional)
+ollama_url = ""                 # Custom Ollama URL (default: localhost:11434)
+```
 
-## Getting Started
+### Environment Variables
+
+| Variable | Overrides |
+|---|---|
+| `ANTHROPIC_API_KEY` | `api_key` (sets provider to anthropic) |
+| `ANTHROPIC_AUTH_TOKEN` | `api_key` (alternative auth) |
+| `ANTHROPIC_BASE_URL` | `base_url` |
+| `OPENAI_API_KEY` | `api_key` (sets provider to openai) |
+| `TC_PROVIDER` | `provider` |
+| `TC_MODEL` | `model` |
+
+Environment variables always take precedence over the config file.
+
+### Restrictions File (`.tc/restrictions.toml`)
+
+See `tc init` to generate a template with full documentation, or view [the example](configs/restrictions.example.toml).
+
+---
+
+## Upgrade
 
 ```bash
-# Build
-make build
-
-# Configure API key
-export ANTHROPIC_API_KEY=sk-ant-...
-
-# Run
-./tc
-
-# Or with config file
-mkdir -p ~/.tc
-cat > ~/.tc/config.toml << 'EOF'
-provider = "anthropic"
-model = "claude-sonnet-4-20250514"
-EOF
-
-./tc
+tc upgrade
 ```
 
-### Customize Security
+Or re-run the install script:
 
 ```bash
-# Copy example restrictions
-cp configs/restrictions.example.toml ~/.tc/restrictions.toml
-
-# Edit to your needs
-vim ~/.tc/restrictions.toml
-
-# tc compiles restrictions to kernel enforcement at startup
-./tc
-# Output:
-#   Platform: kernel 6.5.0
-#     seccomp-bpf: available
-#     landlock: available (ABI v4)
-#     cgroups: v2 (unified)
-#   === Enforcement Plan ===
-#     [kernel] filesystem: Landlock ABI v4: 7 deny_read, 5 deny_write
-#     [kernel] commands: Mount namespace: 14 allowed binaries
-#     [kernel] network: Network namespace: subprocess_network=false
-#     [kernel] resources: cgroups v2: memory=256MB, cpu=2 cores
+curl -fsSL https://raw.githubusercontent.com/Hitesh-K-Murali/terminal-code/main/install.sh | sh
 ```
 
-## Project Structure
+---
 
-```
-terminal-code/
-├── cmd/tc/main.go              # CLI entrypoint (Cobra)
-├── internal/
-│   ├── app/                    # Application lifecycle, config
-│   ├── ui/                     # Bubbletea TUI (chat, input, theme)
-│   ├── engine/                 # LLM interaction loop with tool dispatch
-│   ├── provider/               # Multi-provider abstraction (Claude, OpenAI, Ollama)
-│   ├── tools/                  # Tool system (read, write, glob, grep, bash)
-│   ├── agent/                  # Parallel agent pool, coordinator, budgets
-│   ├── sandbox/                # Kernel security (seccomp, Landlock, namespaces, cgroups)
-│   │   ├── platform.go         #   Runtime capability detection
-│   │   ├── restrictions.go     #   Customer TOML schema
-│   │   ├── compiler.go         #   Config → kernel primitives
-│   │   ├── seccomp.go          #   Process-wide syscall filter
-│   │   ├── landlock.go         #   Filesystem sandbox + app-level fallback
-│   │   ├── namespace.go        #   Isolated subprocess spawner
-│   │   ├── cgroup.go           #   Resource limits (v1/v2)
-│   │   └── audit.go            #   Security event logging
-│   ├── policy/                 # Signed policy verification
-│   ├── secrets/                # OS keychain, secure memory
-│   ├── memory/                 # Persistent project context
-│   ├── session/                # Session management, cost tracking
-│   ├── plugins/                # WASM plugin runtime
-│   └── mcp/                    # Model Context Protocol
-├── configs/                    # Default and example configs
-├── Makefile
-└── go.mod
+## Troubleshooting
+
+```bash
+tc doctor
 ```
 
-## Requirements
+This checks:
+- Config file exists and is valid
+- API key works (with latency)
+- Kernel features available
+- File permissions secure
+- Network connectivity
+- Project restrictions valid
 
-- **Go 1.24+** for building
-- **Linux** for kernel security features (seccomp, Landlock, namespaces, cgroups)
-  - Kernel 5.13+ for full Landlock filesystem enforcement
-  - Kernel 4.18+ for seccomp + namespaces (degraded filesystem enforcement)
-- API key for at least one provider (Anthropic, OpenAI, or Ollama for local)
+### Common Issues
 
-## Autonomous Agent System
+**"no API key found"** → Run `tc setup` or set `ANTHROPIC_API_KEY` in your environment.
 
-Agents are not just parallel workers — they are **autonomous collaborators**:
+**"Landlock unavailable"** → Your kernel is older than 5.13. Filesystem restrictions work at application level instead. Not a blocker — just reduced enforcement.
 
-- **Task delegation**: An agent can spawn a sub-agent for a specific subtask
-- **Sync or async**: Wait for the result (blocking) or continue work and fetch it later
-- **Message bus**: Agents publish findings to topics; other agents subscribe and react
-- **Shared awareness**: All agents share the resource coordinator (no file corruption, no git conflicts)
+**"Cannot reach API"** → Check your network/proxy. For corporate proxies: `tc config set base_url https://your-proxy.com`
 
+**"Ollama not reachable"** → Start Ollama: `ollama serve`. Then: `tc config set provider ollama`
+
+---
+
+## Building from Source
+
+```bash
+git clone https://github.com/Hitesh-K-Murali/terminal-code.git
+cd terminal-code
+
+make build          # Development binary
+make test           # Run tests
+make install        # Install to ~/.local/bin
+make release        # Cross-compile for all platforms
+make build-release  # Obfuscated build (requires garble)
 ```
-Agent A (refactoring auth module)
-  ├── spawns Agent B: "find all callers of authenticate()" [async]
-  ├── spawns Agent C: "write tests for the new auth flow" [async]
-  ├── continues refactoring...
-  ├── fetches Agent B's result → updates its refactor
-  └── waits for Agent C → verifies tests pass
-```
 
-## Smart Context (Token-Efficient)
+Requirements: Go 1.24+, Linux (for kernel security features).
 
-Instead of dumping file contents into every LLM call (wasting tokens), tc uses a **reference-based approach**:
-
-1. **At startup**: Index project → compact file tree + 1-line key file summaries (~200 tokens)
-2. **In system prompt**: "Here's the structure. Use `read_file` for details." 
-3. **Memory entries**: Only first line shown; full content via tool call
-4. **Result**: LLM has full project awareness at ~500 tokens instead of ~50,000
-
-The LLM makes targeted tool calls only when it needs specific file content — not on every request.
-
-## Roadmap
-
-- [x] Phase 1: Secure foundation (TUI, Claude streaming, seccomp, platform detection)
-- [x] Phase 2: Customer-configurable kernel restrictions
-- [x] Phase 3: Tool system with sandbox enforcement (read, write, glob, grep, bash, git)
-- [x] Phase 4: Multi-agent parallel execution (agent pool, coordinator, budgets)
-- [x] Phase 5: Multi-provider + intelligent routing (OpenAI, Ollama, auto-routing)
-- [x] Phase 6: Production polish (sessions, cost tracking, git, memory, slash commands)
-- [x] Phase 6.5: Autonomous agent orchestration (delegation, message bus, sync/async)
-- [x] Phase 6.6: Smart context injection (project indexer, token-efficient references)
-- [ ] Phase 7: Per-directory context manifests (LLM-generated `.tc.md` files)
-- [ ] Phase 8: MCP client/server
-- [ ] Phase 9: WASM plugin system
+---
 
 ## License
 
