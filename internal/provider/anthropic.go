@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -44,6 +45,7 @@ func (a *Anthropic) Complete(ctx context.Context, req *Request) (*Response, erro
 		Messages:  msgs,
 		MaxTokens: a.resolveMaxTokens(req.MaxTokens),
 		System:    req.SystemPrompt,
+		Tools:     convertToolDefs(req.Tools),
 	}
 
 	resp, err := a.client.CreateMessages(ctx, apiReq)
@@ -58,9 +60,6 @@ func (a *Anthropic) Stream(ctx context.Context, req *Request) (<-chan StreamEven
 	msgs := convertMessages(req.Messages)
 
 	ch := make(chan StreamEvent, 64)
-
-	// go-anthropic v2 uses callback-based streaming.
-	// We bridge callbacks → channel for our Provider interface.
 	var once sync.Once
 
 	streamReq := anthropic.MessagesStreamRequest{
@@ -69,6 +68,7 @@ func (a *Anthropic) Stream(ctx context.Context, req *Request) (<-chan StreamEven
 			Messages:  msgs,
 			MaxTokens: a.resolveMaxTokens(req.MaxTokens),
 			System:    req.SystemPrompt,
+			Tools:     convertToolDefs(req.Tools),
 		},
 
 		OnContentBlockDelta: func(data anthropic.MessagesEventContentBlockDeltaData) {
@@ -78,15 +78,29 @@ func (a *Anthropic) Stream(ctx context.Context, req *Request) (<-chan StreamEven
 					Text: *data.Delta.Text,
 				}
 			}
+			// Tool input JSON deltas are accumulated by the library and
+			// delivered as a complete block in OnContentBlockStop
+		},
+
+		OnContentBlockStop: func(_ anthropic.MessagesEventContentBlockStopData, content anthropic.MessageContent) {
+			// When a tool_use block completes, emit a ToolUse event
+			if content.Type == anthropic.MessagesContentTypeToolUse && content.MessageContentToolUse != nil {
+				ch <- StreamEvent{
+					Type: EventToolUse,
+					ToolCall: &ToolCall{
+						ID:    content.MessageContentToolUse.ID,
+						Name:  content.MessageContentToolUse.Name,
+						Input: content.MessageContentToolUse.Input,
+					},
+				}
+			}
 		},
 
 		OnMessageDelta: func(data anthropic.MessagesEventMessageDeltaData) {
-			// Message delta carries usage info
 			once.Do(func() {
 				ch <- StreamEvent{
 					Type: EventDone,
 					Usage: &Usage{
-						InputTokens:  0, // Input tokens come from message_start
 						OutputTokens: int(data.Usage.OutputTokens),
 					},
 				}
@@ -111,7 +125,7 @@ func (a *Anthropic) Stream(ctx context.Context, req *Request) (<-chan StreamEven
 		_, err := a.client.CreateMessagesStream(ctx, streamReq)
 		if err != nil {
 			if ctx.Err() != nil {
-				return // Context cancelled, don't send error
+				return
 			}
 			ch <- StreamEvent{
 				Type:  EventError,
@@ -120,7 +134,6 @@ func (a *Anthropic) Stream(ctx context.Context, req *Request) (<-chan StreamEven
 			return
 		}
 
-		// Ensure done is sent even if OnMessageDelta didn't fire
 		once.Do(func() {
 			ch <- StreamEvent{Type: EventDone}
 		})
@@ -160,16 +173,54 @@ func convertMessages(msgs []Message) []anthropic.Message {
 	return out
 }
 
+// convertToolDefs converts our JSON tool definitions to Anthropic's format.
+func convertToolDefs(toolsJSON json.RawMessage) []anthropic.ToolDefinition {
+	if len(toolsJSON) == 0 {
+		return nil
+	}
+
+	type toolDef struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		InputSchema json.RawMessage `json:"input_schema"`
+	}
+
+	var defs []toolDef
+	if err := json.Unmarshal(toolsJSON, &defs); err != nil {
+		return nil
+	}
+
+	out := make([]anthropic.ToolDefinition, len(defs))
+	for i, d := range defs {
+		out[i] = anthropic.ToolDefinition{
+			Name:        d.Name,
+			Description: d.Description,
+			InputSchema: d.InputSchema,
+		}
+	}
+	return out
+}
+
 func (a *Anthropic) convertResponse(resp anthropic.MessagesResponse) *Response {
 	var content string
+	var toolCalls []ToolCall
+
 	for _, block := range resp.Content {
 		if block.Text != nil {
 			content += *block.Text
 		}
+		if block.Type == anthropic.MessagesContentTypeToolUse && block.MessageContentToolUse != nil {
+			toolCalls = append(toolCalls, ToolCall{
+				ID:    block.MessageContentToolUse.ID,
+				Name:  block.MessageContentToolUse.Name,
+				Input: block.MessageContentToolUse.Input,
+			})
+		}
 	}
 
 	return &Response{
-		Content: content,
+		Content:    content,
+		ToolCalls:  toolCalls,
 		Usage: Usage{
 			InputTokens:  int(resp.Usage.InputTokens),
 			OutputTokens: int(resp.Usage.OutputTokens),

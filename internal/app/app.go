@@ -13,6 +13,7 @@ import (
 	"github.com/Hitesh-K-Murali/terminal-code/internal/engine"
 	"github.com/Hitesh-K-Murali/terminal-code/internal/provider"
 	"github.com/Hitesh-K-Murali/terminal-code/internal/sandbox"
+	"github.com/Hitesh-K-Murali/terminal-code/internal/tools"
 	"github.com/Hitesh-K-Murali/terminal-code/internal/ui"
 )
 
@@ -75,13 +76,12 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("provider: %w", err)
 	}
 
-	// 10. Create engine (pass sandbox components for tool enforcement)
+	// 10. Create engine and register tools
 	eng := engine.New(p)
 
-	// Store sandbox components for later use by tool system (Phase 3)
-	_ = runner
-	_ = pathChecker
-	_ = auditLog
+	registry := tools.NewRegistry()
+	tools.RegisterDefaults(registry, pathChecker, runner, auditLog, plan)
+	eng.SetRegistry(registry)
 
 	// 11. Start TUI
 	model := ui.NewModel(eng, cfg.Model)
