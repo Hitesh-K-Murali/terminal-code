@@ -40,15 +40,6 @@ func NewIsolatedRunner(plan *EnforcementPlan, caps PlatformCapabilities) *Isolat
 	}
 }
 
-// RunResult holds the output and metadata from a subprocess execution.
-type RunResult struct {
-	Stdout   string
-	Stderr   string
-	ExitCode int
-	Duration time.Duration
-	Killed   bool // True if process was killed (timeout, OOM, etc.)
-}
-
 // Run executes a command in an isolated subprocess.
 // It blocks until the subprocess completes, is killed, or the context is cancelled.
 func (r *IsolatedRunner) Run(ctx context.Context, command string) (*RunResult, error) {
@@ -211,25 +202,3 @@ func (r *IsolatedRunner) checkCommandAllowed(command string) error {
 	return nil
 }
 
-// matchCommandPattern checks if a command matches a deny pattern.
-// Patterns use * as wildcard. Examples: "* | bash", "curl * -o *"
-func matchCommandPattern(command, pattern string) bool {
-	// Convert pattern to a simple regex-like check
-	parts := strings.Split(pattern, "*")
-	remaining := command
-	for i, part := range parts {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			continue
-		}
-		idx := strings.Index(remaining, part)
-		if idx < 0 {
-			return false
-		}
-		if i == 0 && idx != 0 && !strings.HasPrefix(pattern, "*") {
-			return false // First part must match at start unless pattern starts with *
-		}
-		remaining = remaining[idx+len(part):]
-	}
-	return true
-}

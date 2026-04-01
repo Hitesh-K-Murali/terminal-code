@@ -7,19 +7,6 @@ import (
 	"syscall"
 )
 
-// PlatformCapabilities describes what kernel security mechanisms are available
-// on this system. All sandbox code checks this before attempting enforcement.
-type PlatformCapabilities struct {
-	KernelVersion    string
-	KernelMajor      int
-	KernelMinor      int
-	SeccompAvailable bool
-	LandlockAvailable bool
-	LandlockABI      int
-	CgroupVersion    int // 0=none, 1=v1, 2=v2
-	UserNSAvailable  bool
-}
-
 // DetectPlatform probes the running kernel for available security features.
 // This is called once at startup; the result is passed to all sandbox components.
 func DetectPlatform() PlatformCapabilities {
