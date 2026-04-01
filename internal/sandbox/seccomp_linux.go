@@ -2,7 +2,6 @@ package sandbox
 
 import (
 	"fmt"
-	"log"
 	"runtime"
 
 	seccomp "github.com/elastic/go-seccomp-bpf"
@@ -12,7 +11,6 @@ import (
 // These are one-way ratchets: once applied, the process cannot remove them.
 func ApplyProcessSecurity(caps PlatformCapabilities) error {
 	if runtime.GOOS != "linux" {
-		log.Println("sandbox: non-linux platform, skipping kernel enforcement")
 		return nil
 	}
 
@@ -20,9 +18,6 @@ func ApplyProcessSecurity(caps PlatformCapabilities) error {
 		if err := applySeccomp(); err != nil {
 			return fmt.Errorf("seccomp: %w", err)
 		}
-		log.Println("sandbox: seccomp-bpf filter applied (TSYNC)")
-	} else {
-		log.Println("sandbox: seccomp unavailable, skipping syscall filtering")
 	}
 
 	return nil

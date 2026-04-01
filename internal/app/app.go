@@ -20,16 +20,22 @@ import (
 )
 
 func Run(ctx context.Context) error {
+	// Suppress default log timestamps — we handle our own output
+	log.SetFlags(0)
+	log.SetOutput(os.Stderr)
+
 	ctx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 
+	printBanner()
+
 	// 1. Detect platform capabilities
 	caps := sandbox.DetectPlatform()
-	reportCapabilities(caps)
+	printCapabilities(caps)
 
 	// 2. Apply process-wide security (seccomp)
 	if err := sandbox.ApplyProcessSecurity(caps); err != nil {
-		log.Printf("warning: failed to apply process security: %v", err)
+		fmt.Fprintf(os.Stderr, "  %s seccomp: %v\n", sWarn.Render("!"), err)
 	}
 
 	// 3. Load and compile customer restrictions
@@ -39,34 +45,30 @@ func Run(ctx context.Context) error {
 	}
 	if warnings := restrictions.Validate(); len(warnings) > 0 {
 		for _, w := range warnings {
-			fmt.Fprintf(os.Stderr, "  restriction warning: %s\n", w)
+			fmt.Fprintf(os.Stderr, "  %s %s\n", sWarn.Render("!"), w)
 		}
 	}
 
 	plan := sandbox.Compile(restrictions, caps)
-	plan.Report()
+	printEnforcement(plan)
 
 	// 4. Apply Landlock filesystem restrictions (if available)
 	if err := sandbox.ApplyLandlock(plan, caps); err != nil {
-		log.Printf("warning: landlock: %v", err)
+		fmt.Fprintf(os.Stderr, "  %s landlock: %v\n", sWarn.Render("!"), err)
 	}
 
-	// 5. Initialize audit log
+	// 5. Initialize audit log (silent — no startup output)
 	auditLog := sandbox.NewAuditLog()
 	defer auditLog.Close()
-
-	// Log all applied restrictions
 	for _, a := range plan.Applied {
 		auditLog.LogApplied(a.Category, a.Description, a.Level)
 	}
 
-	// 6. Create isolated runner for subprocess execution
+	// 6. Create sandbox components
 	runner := sandbox.NewIsolatedRunner(plan, caps)
-
-	// 7. Create path checker (app-level filesystem enforcement)
 	pathChecker := sandbox.NewPathChecker(plan)
 
-	// 8. Load config (with first-run detection)
+	// 7. Load config (with first-run detection)
 	cfg, err := LoadConfig()
 	if err != nil {
 		if errors.Is(err, ErrNoConfig) {
@@ -74,7 +76,6 @@ func Run(ctx context.Context) error {
 			if setupErr := RunSetup(); setupErr != nil {
 				return fmt.Errorf("setup: %w", setupErr)
 			}
-			// Reload after setup
 			cfg, err = LoadConfig()
 			if err != nil {
 				return fmt.Errorf("config after setup: %w", err)
@@ -84,40 +85,36 @@ func Run(ctx context.Context) error {
 		}
 	}
 
-	// 9. Initialize provider
+	// 8. Initialize provider
 	p, err := provider.New(cfg.Provider, cfg.APIKey, cfg.Model)
 	if err != nil {
 		return fmt.Errorf("provider: %w", err)
 	}
 
-	// 10. Index project and build context
+	// 9. Index project and build context
 	wd, _ := os.Getwd()
-	projectIndex, err := memory.IndexProject(wd)
-	if err != nil {
-		log.Printf("warning: project indexing: %v", err)
-	} else {
-		fmt.Fprintf(os.Stderr, "  project: indexed %d files\n", projectIndex.TotalFiles)
-	}
-
+	projectIndex, _ := memory.IndexProject(wd)
 	memStore, _ := memory.NewStore(wd)
 	ctxBuilder := memory.NewContextBuilder(projectIndex, memStore)
 
-	// 11. Create directory context cache
-	dirCache := memory.NewDirCache(memory.DirCacheConfig{
-		PersistToDisk: false, // In-memory only by default
-	})
+	// 10. Create directory context cache
+	dirCache := memory.NewDirCache(memory.DirCacheConfig{})
 
-	// 12. Create engine and register tools
+	// 11. Create engine and register tools
 	eng := engine.New(p)
-
 	registry := tools.NewRegistry()
 	tools.RegisterDefaults(registry, pathChecker, runner, auditLog, plan, dirCache)
 	eng.SetRegistry(registry)
-
-	// Inject project context (compact reference, not full content)
 	eng.SetProjectContext(ctxBuilder.Build())
 
-	// 11. Start TUI
+	// Print ready status
+	fileCount := 0
+	if projectIndex != nil {
+		fileCount = projectIndex.TotalFiles
+	}
+	printReady(cfg.Provider, cfg.Model, len(registry.All()), fileCount)
+
+	// 12. Start TUI
 	model := ui.NewModel(eng, cfg.Model)
 	program := tea.NewProgram(model,
 		tea.WithAltScreen(),
@@ -130,37 +127,4 @@ func Run(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func reportCapabilities(caps sandbox.PlatformCapabilities) {
-	fmt.Fprintf(os.Stderr, "Platform: kernel %s\n", caps.KernelVersion)
-
-	if caps.SeccompAvailable {
-		fmt.Fprintln(os.Stderr, "  seccomp-bpf: available")
-	} else {
-		fmt.Fprintln(os.Stderr, "  seccomp-bpf: unavailable")
-	}
-
-	if caps.LandlockAvailable {
-		fmt.Fprintf(os.Stderr, "  landlock: available (ABI v%d)\n", caps.LandlockABI)
-	} else {
-		fmt.Fprintln(os.Stderr, "  landlock: unavailable (kernel < 5.13)")
-	}
-
-	switch caps.CgroupVersion {
-	case 2:
-		fmt.Fprintln(os.Stderr, "  cgroups: v2 (unified)")
-	case 1:
-		fmt.Fprintln(os.Stderr, "  cgroups: v1 (legacy)")
-	default:
-		fmt.Fprintln(os.Stderr, "  cgroups: unavailable")
-	}
-
-	if caps.UserNSAvailable {
-		fmt.Fprintln(os.Stderr, "  user namespaces: available")
-	} else {
-		fmt.Fprintln(os.Stderr, "  user namespaces: unavailable")
-	}
-
-	fmt.Fprintln(os.Stderr)
 }

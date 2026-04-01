@@ -2,7 +2,6 @@ package tools
 
 import (
 	"encoding/json"
-	"fmt"
 	"sync"
 
 	"github.com/Hitesh-K-Murali/terminal-code/internal/memory"
@@ -92,5 +91,5 @@ func RegisterDefaults(
 		reg.Register(NewDirContextTool(dirCache))
 	}
 
-	fmt.Printf("  tools: registered %d tools\n", len(reg.All()))
+	// Tool count reported by app startup — no output here
 }

@@ -60,7 +60,7 @@ type landlockPathBeneathAttr struct {
 // Returns nil if Landlock is unavailable (caller should use app-level fallback).
 func ApplyLandlock(plan *EnforcementPlan, caps PlatformCapabilities) error {
 	if !caps.LandlockAvailable {
-		log.Println("landlock: unavailable, skipping kernel filesystem enforcement")
+		// Silent — app startup handles the messaging
 		return nil
 	}
 
