@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/Hitesh-K-Murali/terminal-code/internal/memory"
 	"github.com/Hitesh-K-Murali/terminal-code/internal/sandbox"
 )
 
@@ -79,6 +80,7 @@ func RegisterDefaults(
 	runner *sandbox.IsolatedRunner,
 	auditLog *sandbox.AuditLog,
 	plan *sandbox.EnforcementPlan,
+	dirCache *memory.DirCache,
 ) {
 	reg.Register(NewReadFileTool(pathChecker, auditLog))
 	reg.Register(NewWriteFileTool(pathChecker, auditLog, plan))
@@ -86,6 +88,9 @@ func RegisterDefaults(
 	reg.Register(NewGrepTool())
 	reg.Register(NewBashTool(runner, auditLog, plan))
 	reg.Register(NewGitTool())
+	if dirCache != nil {
+		reg.Register(NewDirContextTool(dirCache))
+	}
 
 	fmt.Printf("  tools: registered %d tools\n", len(reg.All()))
 }

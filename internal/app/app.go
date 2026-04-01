@@ -89,11 +89,16 @@ func Run(ctx context.Context) error {
 	memStore, _ := memory.NewStore(wd)
 	ctxBuilder := memory.NewContextBuilder(projectIndex, memStore)
 
-	// 11. Create engine and register tools
+	// 11. Create directory context cache
+	dirCache := memory.NewDirCache(memory.DirCacheConfig{
+		PersistToDisk: false, // In-memory only by default
+	})
+
+	// 12. Create engine and register tools
 	eng := engine.New(p)
 
 	registry := tools.NewRegistry()
-	tools.RegisterDefaults(registry, pathChecker, runner, auditLog, plan)
+	tools.RegisterDefaults(registry, pathChecker, runner, auditLog, plan, dirCache)
 	eng.SetRegistry(registry)
 
 	// Inject project context (compact reference, not full content)
