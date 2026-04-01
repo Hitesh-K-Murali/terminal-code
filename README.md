@@ -237,14 +237,48 @@ terminal-code/
   - Kernel 4.18+ for seccomp + namespaces (degraded filesystem enforcement)
 - API key for at least one provider (Anthropic, OpenAI, or Ollama for local)
 
+## Autonomous Agent System
+
+Agents are not just parallel workers — they are **autonomous collaborators**:
+
+- **Task delegation**: An agent can spawn a sub-agent for a specific subtask
+- **Sync or async**: Wait for the result (blocking) or continue work and fetch it later
+- **Message bus**: Agents publish findings to topics; other agents subscribe and react
+- **Shared awareness**: All agents share the resource coordinator (no file corruption, no git conflicts)
+
+```
+Agent A (refactoring auth module)
+  ├── spawns Agent B: "find all callers of authenticate()" [async]
+  ├── spawns Agent C: "write tests for the new auth flow" [async]
+  ├── continues refactoring...
+  ├── fetches Agent B's result → updates its refactor
+  └── waits for Agent C → verifies tests pass
+```
+
+## Smart Context (Token-Efficient)
+
+Instead of dumping file contents into every LLM call (wasting tokens), tc uses a **reference-based approach**:
+
+1. **At startup**: Index project → compact file tree + 1-line key file summaries (~200 tokens)
+2. **In system prompt**: "Here's the structure. Use `read_file` for details." 
+3. **Memory entries**: Only first line shown; full content via tool call
+4. **Result**: LLM has full project awareness at ~500 tokens instead of ~50,000
+
+The LLM makes targeted tool calls only when it needs specific file content — not on every request.
+
 ## Roadmap
 
 - [x] Phase 1: Secure foundation (TUI, Claude streaming, seccomp, platform detection)
 - [x] Phase 2: Customer-configurable kernel restrictions
-- [x] Phase 3: Tool system with sandbox enforcement (read, write, glob, grep, bash)
+- [x] Phase 3: Tool system with sandbox enforcement (read, write, glob, grep, bash, git)
 - [x] Phase 4: Multi-agent parallel execution (agent pool, coordinator, budgets)
-- [ ] Phase 5: Multi-provider + intelligent routing (OpenAI, Ollama, auto-routing)
-- [ ] Phase 6: Production polish (sessions, git integration, MCP, WASM plugins)
+- [x] Phase 5: Multi-provider + intelligent routing (OpenAI, Ollama, auto-routing)
+- [x] Phase 6: Production polish (sessions, cost tracking, git, memory, slash commands)
+- [x] Phase 6.5: Autonomous agent orchestration (delegation, message bus, sync/async)
+- [x] Phase 6.6: Smart context injection (project indexer, token-efficient references)
+- [ ] Phase 7: Per-directory context manifests (LLM-generated `.tc.md` files)
+- [ ] Phase 8: MCP client/server
+- [ ] Phase 9: WASM plugin system
 
 ## License
 

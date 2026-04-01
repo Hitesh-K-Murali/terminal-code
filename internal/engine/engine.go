@@ -14,9 +14,10 @@ import (
 // When the LLM requests a tool call, the engine executes it,
 // sends the result back, and continues streaming.
 type Engine struct {
-	provider provider.Provider
-	registry *tools.Registry
-	history  []provider.Message
+	provider       provider.Provider
+	registry       *tools.Registry
+	history        []provider.Message
+	projectContext string // Auto-injected into every system prompt
 }
 
 func New(p provider.Provider) *Engine {
@@ -26,9 +27,14 @@ func New(p provider.Provider) *Engine {
 }
 
 // SetRegistry attaches the tool registry to the engine.
-// Must be called before Send if tools are available.
 func (e *Engine) SetRegistry(reg *tools.Registry) {
 	e.registry = reg
+}
+
+// SetProjectContext sets the auto-injected project context.
+// This is built by ContextBuilder from project index + memory.
+func (e *Engine) SetProjectContext(ctx string) {
+	e.projectContext = ctx
 }
 
 // Send sends a user message and returns a streaming channel of events.
@@ -61,7 +67,16 @@ Be concise, precise, and direct. When showing code, use proper markdown code blo
 You have access to tools for reading/writing files, searching code, and running shell commands.
 All tool operations are sandboxed: file access is restricted by policy, shell commands run in
 isolated namespaces with limited binaries and no network access.
-Use tools when you need to interact with the filesystem or run commands.`
+Use tools when you need to interact with the filesystem or run commands.
+
+IMPORTANT: Before using tools to explore the project, check the project context below first.
+It contains the file tree, key config files, and project memory. Only use tools when you need
+information not already provided in the context.`
+
+	// Auto-inject project context (file tree, key files, memory)
+	if e.projectContext != "" {
+		systemPrompt += "\n\n" + e.projectContext
+	}
 
 	for {
 		req := &provider.Request{

@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/Hitesh-K-Murali/terminal-code/internal/engine"
+	"github.com/Hitesh-K-Murali/terminal-code/internal/memory"
 	"github.com/Hitesh-K-Murali/terminal-code/internal/provider"
 	"github.com/Hitesh-K-Murali/terminal-code/internal/sandbox"
 	"github.com/Hitesh-K-Murali/terminal-code/internal/tools"
@@ -76,12 +77,27 @@ func Run(ctx context.Context) error {
 		return fmt.Errorf("provider: %w", err)
 	}
 
-	// 10. Create engine and register tools
+	// 10. Index project and build context
+	wd, _ := os.Getwd()
+	projectIndex, err := memory.IndexProject(wd)
+	if err != nil {
+		log.Printf("warning: project indexing: %v", err)
+	} else {
+		fmt.Fprintf(os.Stderr, "  project: indexed %d files\n", projectIndex.TotalFiles)
+	}
+
+	memStore, _ := memory.NewStore(wd)
+	ctxBuilder := memory.NewContextBuilder(projectIndex, memStore)
+
+	// 11. Create engine and register tools
 	eng := engine.New(p)
 
 	registry := tools.NewRegistry()
 	tools.RegisterDefaults(registry, pathChecker, runner, auditLog, plan)
 	eng.SetRegistry(registry)
+
+	// Inject project context (compact reference, not full content)
+	eng.SetProjectContext(ctxBuilder.Build())
 
 	// 11. Start TUI
 	model := ui.NewModel(eng, cfg.Model)
