@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 
 	"github.com/liushuangls/go-anthropic/v2"
@@ -23,7 +25,24 @@ func NewAnthropic(apiKey, model string) (*Anthropic, error) {
 		model = "claude-sonnet-4-20250514"
 	}
 
-	client := anthropic.NewClient(apiKey)
+	// Support custom base URL (e.g., corporate proxy)
+	// go-anthropic appends "/messages" to the base URL, so if the proxy
+	// expects /v1/messages, set ANTHROPIC_BASE_URL to https://host/v1
+	var opts []anthropic.ClientOption
+	if baseURL := os.Getenv("ANTHROPIC_BASE_URL"); baseURL != "" {
+		// Ensure the base URL includes the /v1 path if needed
+		if !strings.HasSuffix(baseURL, "/v1") && !strings.HasSuffix(baseURL, "/v1/") {
+			baseURL = strings.TrimRight(baseURL, "/") + "/v1"
+		}
+		opts = append(opts, anthropic.WithBaseURL(baseURL))
+	}
+
+	// Support auth token (alternative to API key)
+	if authToken := os.Getenv("ANTHROPIC_AUTH_TOKEN"); authToken != "" {
+		apiKey = authToken
+	}
+
+	client := anthropic.NewClient(apiKey, opts...)
 	return &Anthropic{client: client, model: model}, nil
 }
 
