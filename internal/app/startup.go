@@ -1,7 +1,10 @@
 package app
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -81,4 +84,42 @@ func printReady(provider, model string, toolCount, fileCount int) {
 		sDim.Render("tools"), sVal.Render(fmt.Sprintf("%d", toolCount)),
 		sDim.Render("indexed"), sVal.Render(fmt.Sprintf("%d files", fileCount)))
 	fmt.Println()
+}
+
+// confirmFirstRun shows a compact confirmation when env vars exist but no config file.
+// Saves config after confirmation so this only happens once.
+func confirmFirstRun(cfg *Config) error {
+	fmt.Println()
+	fmt.Printf("  %s %s %s\n",
+		sOK.Render("✓"),
+		sVal.Render("Detected API key from environment"),
+		sDim.Render("("+FormatProvider(cfg.Provider)+")"))
+	fmt.Printf("  %s %s %s\n",
+		sDim.Render(" "),
+		sDim.Render("Model:"),
+		sVal.Render(cfg.Model))
+	fmt.Println()
+	fmt.Printf("  %s  %s\n",
+		sVal.Render("Enter to continue"),
+		sDim.Render("s = change settings"))
+	fmt.Print("  ")
+
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(strings.ToLower(input))
+
+	if input == "s" || input == "setup" {
+		return RunSetup()
+	}
+
+	// Save config so this confirmation doesn't repeat
+	if err := SaveConfig(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "  %s Could not save config: %v\n", sWarn.Render("!"), err)
+		// Continue anyway — env vars still work
+	} else {
+		fmt.Printf("  %s Saved to %s\n", sOK.Render("✓"), sDim.Render(ConfigPath()))
+	}
+	fmt.Println()
+
+	return nil
 }

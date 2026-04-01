@@ -88,6 +88,7 @@ func cmdClear(m *Model, args string) string {
 	m.engine.Reset()
 	m.totalInputTokens = 0
 	m.totalOutputTokens = 0
+	m.totalCost = 0
 	return "Conversation cleared."
 }
 
@@ -101,12 +102,16 @@ func cmdModel(m *Model, args string) string {
 
 func cmdCost(m *Model, args string) string {
 	return fmt.Sprintf("**Session Cost**\n\n"+
+		"- Model: %s\n"+
 		"- Input tokens: %d\n"+
 		"- Output tokens: %d\n"+
 		"- Total tokens: %d\n"+
+		"- Estimated cost: $%.4f\n"+
 		"- Messages: %d\n",
+		m.modelName,
 		m.totalInputTokens, m.totalOutputTokens,
 		m.totalInputTokens+m.totalOutputTokens,
+		m.totalCost,
 		len(m.messages))
 }
 

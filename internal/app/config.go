@@ -44,6 +44,12 @@ func ConfigExists() bool {
 	return err == nil
 }
 
+// HasConfigFile returns true only if a config file exists on disk
+// (separate from env vars being present). Used for first-run detection.
+func HasConfigFile() bool {
+	return ConfigExists()
+}
+
 // LoadConfig loads configuration from file and environment.
 // Returns ErrNoConfig if no config file exists AND no env vars are set.
 func LoadConfig() (*Config, error) {

@@ -10,59 +10,112 @@ var (
 	colorWarning   = lipgloss.Color("#F59E0B") // Amber
 	colorError     = lipgloss.Color("#EF4444") // Red
 	colorMuted     = lipgloss.Color("#6B7280") // Gray
+	colorDimmer    = lipgloss.Color("#4B5563") // Darker gray
 	colorText      = lipgloss.Color("#E5E7EB") // Light gray
-	colorBg        = lipgloss.Color("#111827") // Near black
 	colorBorder    = lipgloss.Color("#374151") // Dark gray
-	colorUserBg    = lipgloss.Color("#1E1B4B") // Deep violet
-	colorAssistBg  = lipgloss.Color("#0F172A") // Deep blue
 )
 
-// Styles
+// Header bar
 var (
-	styleApp = lipgloss.NewStyle().
-			Background(colorBg)
-
-	styleHeader = lipgloss.NewStyle().
-			Foreground(colorPrimary).
-			Bold(true).
+	styleHeaderBar = lipgloss.NewStyle().
+			BorderBottom(true).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(colorBorder).
 			Padding(0, 1)
 
-	styleStatusBar = lipgloss.NewStyle().
-			Foreground(colorMuted).
-			Padding(0, 1).
-			BorderTop(true).
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderForeground(colorBorder)
+	styleHeaderBrand = lipgloss.NewStyle().
+			Foreground(colorPrimary).
+			Bold(true)
+
+	styleHeaderModel = lipgloss.NewStyle().
+			Foreground(colorText)
+
+	styleHeaderMeta = lipgloss.NewStyle().
+			Foreground(colorMuted)
+)
+
+// Messages
+var (
+	styleUserDot = lipgloss.NewStyle().
+			Foreground(colorSecondary).
+			Bold(true)
 
 	styleUserLabel = lipgloss.NewStyle().
 			Foreground(colorSecondary).
+			Bold(true)
+
+	styleAssistDot = lipgloss.NewStyle().
+			Foreground(colorPrimary).
 			Bold(true)
 
 	styleAssistLabel = lipgloss.NewStyle().
 			Foreground(colorPrimary).
 			Bold(true)
 
+	styleTimestamp = lipgloss.NewStyle().
+			Foreground(colorDimmer)
+
 	styleUserMsg = lipgloss.NewStyle().
+			Foreground(colorText).
 			Padding(0, 2)
 
 	styleAssistMsg = lipgloss.NewStyle().
 			Padding(0, 2)
 
-	styleInputBorder = lipgloss.NewStyle().
-			BorderStyle(lipgloss.RoundedBorder()).
-			BorderForeground(colorPrimary).
-			Padding(0, 1)
+	styleToolCall = lipgloss.NewStyle().
+			Foreground(colorMuted)
 
-	styleInputPrompt = lipgloss.NewStyle().
-			Foreground(colorPrimary).
-			Bold(true)
-
-	styleMuted = lipgloss.NewStyle().
-		Foreground(colorMuted)
+	styleToolLine = lipgloss.NewStyle().
+			Foreground(colorDimmer)
 
 	styleError = lipgloss.NewStyle().
 		Foreground(colorError).
 		Bold(true)
+)
+
+// Spinner / streaming
+var (
+	styleSpinner = lipgloss.NewStyle().
+			Foreground(colorPrimary)
+
+	styleStreamCursor = lipgloss.NewStyle().
+				Foreground(colorPrimary).
+				Bold(true)
+
+	styleStreamStatus = lipgloss.NewStyle().
+				Foreground(colorWarning)
+)
+
+// Hint bar
+var (
+	styleHintBar = lipgloss.NewStyle().
+			Foreground(colorMuted).
+			BorderTop(true).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(colorBorder).
+			Padding(0, 1)
+
+	styleHintKey = lipgloss.NewStyle().
+			Foreground(colorText)
+
+	styleHintDesc = lipgloss.NewStyle().
+			Foreground(colorDimmer)
+)
+
+// Input
+var (
+	stylePrompt = lipgloss.NewStyle().
+			Foreground(colorPrimary).
+			Bold(true)
+
+	styleInputArea = lipgloss.NewStyle().
+			Padding(0, 1)
+)
+
+// General
+var (
+	styleMuted = lipgloss.NewStyle().
+		Foreground(colorMuted)
 
 	styleWarning = lipgloss.NewStyle().
 		Foreground(colorWarning).

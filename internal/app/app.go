@@ -73,6 +73,7 @@ func Run(ctx context.Context) error {
 	if err != nil {
 		if errors.Is(err, ErrNoConfig) {
 			fmt.Fprintln(os.Stderr, "Welcome to tc! Let's get you set up.")
+			fmt.Fprintln(os.Stderr)
 			if setupErr := RunSetup(); setupErr != nil {
 				return fmt.Errorf("setup: %w", setupErr)
 			}
@@ -82,6 +83,13 @@ func Run(ctx context.Context) error {
 			}
 		} else {
 			return fmt.Errorf("config: %w", err)
+		}
+	}
+
+	// First-run confirmation: env vars gave us a config, but user hasn't confirmed yet
+	if !HasConfigFile() {
+		if confirmErr := confirmFirstRun(cfg); confirmErr != nil {
+			return confirmErr
 		}
 	}
 
@@ -116,6 +124,7 @@ func Run(ctx context.Context) error {
 
 	// 12. Start TUI
 	model := ui.NewModel(eng, cfg.Model)
+	model.SetToolCount(len(registry.All()))
 	program := tea.NewProgram(model,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
