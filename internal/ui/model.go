@@ -33,6 +33,7 @@ type chatMessage struct {
 type Model struct {
 	engine    *engine.Engine
 	modelName string
+	commands  map[string]SlashCommand
 
 	textarea  textarea.Model
 	viewport  viewport.Model
@@ -64,6 +65,7 @@ func NewModel(eng *engine.Engine, model string) *Model {
 		engine:    eng,
 		modelName: model,
 		textarea:  ta,
+		commands:  RegisterCommands(),
 	}
 }
 
@@ -94,11 +96,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if input == "/quit" || input == "/exit" {
 				return m, tea.Quit
 			}
-			if input == "/clear" {
-				m.messages = nil
-				m.engine.Reset()
-				m.totalInputTokens = 0
-				m.totalOutputTokens = 0
+
+			// Handle slash commands
+			if strings.HasPrefix(input, "/") {
+				result := m.handleCommand(input)
+				if result != "" {
+					m.messages = append(m.messages, chatMessage{role: "user", content: input})
+					m.messages = append(m.messages, chatMessage{role: "assistant", content: result})
+				}
 				m.textarea.Reset()
 				m.refreshViewport()
 				break
@@ -299,4 +304,25 @@ func readOneEvent(ch <-chan provider.StreamEvent) tea.Msg {
 	default:
 		return streamDoneMsg{}
 	}
+}
+
+// handleCommand processes slash commands and returns the result text.
+func (m *Model) handleCommand(input string) string {
+	parts := strings.SplitN(input, " ", 2)
+	cmdName := parts[0]
+	args := ""
+	if len(parts) > 1 {
+		args = parts[1]
+	}
+
+	cmd, ok := m.commands[cmdName]
+	if !ok {
+		return fmt.Sprintf("Unknown command: `%s`. Type `/help` for available commands.", cmdName)
+	}
+
+	if cmd.Handler == nil {
+		return ""
+	}
+
+	return cmd.Handler(m, args)
 }

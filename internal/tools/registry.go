@@ -85,6 +85,7 @@ func RegisterDefaults(
 	reg.Register(NewGlobTool())
 	reg.Register(NewGrepTool())
 	reg.Register(NewBashTool(runner, auditLog, plan))
+	reg.Register(NewGitTool())
 
 	fmt.Printf("  tools: registered %d tools\n", len(reg.All()))
 }
