@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -65,10 +66,22 @@ func Run(ctx context.Context) error {
 	// 7. Create path checker (app-level filesystem enforcement)
 	pathChecker := sandbox.NewPathChecker(plan)
 
-	// 8. Load config
+	// 8. Load config (with first-run detection)
 	cfg, err := LoadConfig()
 	if err != nil {
-		return fmt.Errorf("config: %w", err)
+		if errors.Is(err, ErrNoConfig) {
+			fmt.Fprintln(os.Stderr, "Welcome to tc! Let's get you set up.")
+			if setupErr := RunSetup(); setupErr != nil {
+				return fmt.Errorf("setup: %w", setupErr)
+			}
+			// Reload after setup
+			cfg, err = LoadConfig()
+			if err != nil {
+				return fmt.Errorf("config after setup: %w", err)
+			}
+		} else {
+			return fmt.Errorf("config: %w", err)
+		}
 	}
 
 	// 9. Initialize provider
