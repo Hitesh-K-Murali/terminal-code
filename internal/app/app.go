@@ -29,22 +29,61 @@ func Run(ctx context.Context) error {
 		log.Printf("warning: failed to apply process security: %v", err)
 	}
 
-	// 3. Load config
+	// 3. Load and compile customer restrictions
+	restrictions, err := sandbox.LoadRestrictions()
+	if err != nil {
+		return fmt.Errorf("restrictions: %w", err)
+	}
+	if warnings := restrictions.Validate(); len(warnings) > 0 {
+		for _, w := range warnings {
+			fmt.Fprintf(os.Stderr, "  restriction warning: %s\n", w)
+		}
+	}
+
+	plan := sandbox.Compile(restrictions, caps)
+	plan.Report()
+
+	// 4. Apply Landlock filesystem restrictions (if available)
+	if err := sandbox.ApplyLandlock(plan, caps); err != nil {
+		log.Printf("warning: landlock: %v", err)
+	}
+
+	// 5. Initialize audit log
+	auditLog := sandbox.NewAuditLog()
+	defer auditLog.Close()
+
+	// Log all applied restrictions
+	for _, a := range plan.Applied {
+		auditLog.LogApplied(a.Category, a.Description, a.Level)
+	}
+
+	// 6. Create isolated runner for subprocess execution
+	runner := sandbox.NewIsolatedRunner(plan, caps)
+
+	// 7. Create path checker (app-level filesystem enforcement)
+	pathChecker := sandbox.NewPathChecker(plan)
+
+	// 8. Load config
 	cfg, err := LoadConfig()
 	if err != nil {
 		return fmt.Errorf("config: %w", err)
 	}
 
-	// 4. Initialize provider
+	// 9. Initialize provider
 	p, err := provider.New(cfg.Provider, cfg.APIKey, cfg.Model)
 	if err != nil {
 		return fmt.Errorf("provider: %w", err)
 	}
 
-	// 5. Create engine
+	// 10. Create engine (pass sandbox components for tool enforcement)
 	eng := engine.New(p)
 
-	// 6. Start TUI
+	// Store sandbox components for later use by tool system (Phase 3)
+	_ = runner
+	_ = pathChecker
+	_ = auditLog
+
+	// 11. Start TUI
 	model := ui.NewModel(eng, cfg.Model)
 	program := tea.NewProgram(model,
 		tea.WithAltScreen(),

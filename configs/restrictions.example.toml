@@ -1,0 +1,96 @@
+# tc Restrictions Configuration
+# Copy to ~/.tc/restrictions.toml and customize.
+#
+# These restrictions are compiled into kernel-level enforcement at startup.
+# On Linux 5.13+: filesystem rules are kernel-enforced via Landlock (100% guarantee).
+# On older kernels: filesystem rules are application-enforced (degraded, with warning).
+# Command and network restrictions use namespaces (kernel-enforced on all modern Linux).
+# Resource limits use cgroups (kernel-enforced where available).
+
+[filesystem]
+# Paths the LLM can NEVER read (Landlock on 5.13+, app-level fallback)
+deny_read = [
+    "~/.ssh/**",
+    "~/.gnupg/**",
+    "~/.aws/**",
+    "/etc/shadow",
+    "**/.env",
+    "**/*.pem",
+    "**/*.key",
+]
+
+# Paths the LLM can NEVER write to
+deny_write = [
+    "/usr/**",
+    "/bin/**",
+    "/sbin/**",
+    "~/.bashrc",
+    "~/.zshrc",
+]
+
+# Paths the LLM CAN write to (if set, acts as allowlist)
+allow_write = [
+    "./src/**",
+    "./internal/**",
+    "./configs/**",
+    "./tests/**",
+    "/tmp/tc-*",
+]
+
+# Can the LLM delete files? (Landlock removes unlink permission)
+allow_delete = false
+
+[commands]
+# Binaries subprocesses can execute (mount namespace: all others invisible)
+allow = [
+    "git", "go", "make", "npm", "npx", "node",
+    "python3", "pip", "pytest",
+    "cat", "ls", "find", "grep", "rg", "sed", "awk",
+    "echo", "printf", "head", "tail", "wc", "sort", "uniq",
+    "diff", "patch", "curl",
+]
+
+# Argument-level deny patterns (application-enforced, defense-in-depth)
+deny_patterns = [
+    "* | bash",
+    "* | sh",
+    "curl * -o *",
+    "git push --force *",
+    "chmod 777 *",
+]
+
+[network]
+# Allowed outbound connections (Landlock V4 or network namespace)
+allow_outbound = [
+    "api.anthropic.com:443",
+    "api.openai.com:443",
+    "localhost:11434",
+]
+
+# Can subprocesses access the network?
+subprocess_network = false
+
+[resources]
+# Per-subprocess limits (cgroups — kernel-enforced)
+max_memory_per_subprocess = "256MB"
+max_cpu_cores_per_subprocess = 2
+max_subprocess_runtime = "5m"
+max_concurrent_subprocesses = 4
+max_pids_per_subprocess = 64
+
+# Per-session limits (application-enforced)
+max_tokens_per_session = 500000
+max_cost_per_session = "5.00"
+max_files_written_per_session = 50
+max_file_size_write = "1MB"
+
+[llm_actions]
+allow_file_read = true
+allow_file_write = true
+allow_file_delete = false
+allow_bash_execution = true
+allow_network_fetch = true
+allow_git_operations = true
+allow_git_push = false
+allow_agent_spawn = true
+max_parallel_agents = 3
