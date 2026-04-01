@@ -91,7 +91,11 @@ func New(name, apiKey, model string) (Provider, error) {
 	switch name {
 	case "anthropic":
 		return NewAnthropic(apiKey, model)
+	case "openai":
+		return NewOpenAI(apiKey, model)
+	case "ollama":
+		return NewOllama(model)
 	default:
-		return nil, fmt.Errorf("unknown provider: %q (available: anthropic)", name)
+		return nil, fmt.Errorf("unknown provider: %q (available: anthropic, openai, ollama)", name)
 	}
 }
